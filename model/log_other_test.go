@@ -82,3 +82,28 @@ func TestLogOtherJSONStringDoesNotMutateReceiver(t *testing.T) {
 	require.Equal(t, before, after)
 	require.Equal(t, first, second)
 }
+
+func TestResolveUpstreamModelNameUsesMappedModelOrRequestModel(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		isMapped    bool
+		upstream    string
+		requestName string
+		want        string
+	}{
+		{name: "unmapped request", requestName: "client-model", want: "client-model"},
+		{name: "mapped request", isMapped: true, upstream: "provider-model", requestName: "client-model", want: "provider-model"},
+		{name: "mapped request with missing upstream name", isMapped: true, requestName: "client-model", want: ""},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			other := NewLogOther()
+			if testCase.isMapped {
+				other.SetPublic("is_model_mapped", true)
+			}
+			if testCase.upstream != "" {
+				other.SetPublic("upstream_model_name", testCase.upstream)
+			}
+			assert.Equal(t, testCase.want, resolveUpstreamModelName(other, testCase.requestName))
+		})
+	}
+}

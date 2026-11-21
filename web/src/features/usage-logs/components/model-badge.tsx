@@ -228,12 +228,13 @@ export function ResponseModelDetails(props: {
           label: t('Request Model'),
           value: props.observation.requested_model,
         },
-        {
-          label: t('Upstream Model'),
-          value:
-            props.observation.upstream_model ||
-            props.observation.requested_model,
-        },
+        // Keep the upstream request model available in the payload, but hidden from the log UI.
+        // {
+        //   label: t('Upstream Model'),
+        //   value:
+        //     props.observation.upstream_model ||
+        //     props.observation.requested_model,
+        // },
         {
           label: t('Response Model'),
           value: props.observation.returned_model,

@@ -64,6 +64,12 @@ const UpstreamBalances = lazy(() =>
   }))
 )
 
+const LazyProfitAnalytics = lazy(() =>
+  import('./components/models/profit-analytics').then((module) => ({
+    default: module.ProfitAnalytics,
+  }))
+)
+
 const route = getRouteApi('/_authenticated/dashboard/$section')
 
 const LOG_STAT_CARD_FALLBACK_KEYS = [
@@ -203,6 +209,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   'upstream-balances': {
     titleKey: 'Upstream Balance',
   },
+  profit: {
+    titleKey: 'Profit Analytics',
+  },
 }
 
 export function Dashboard() {
@@ -264,7 +273,10 @@ export function Dashboard() {
       DASHBOARD_SECTION_IDS.filter(
         (section) =>
           section !== 'overview' &&
-          ((section !== 'users' && section !== 'upstream-balances') || isAdmin)
+          ((section !== 'users' &&
+            section !== 'upstream-balances' &&
+            section !== 'profit') ||
+            isAdmin)
       ),
     [isAdmin]
   )
@@ -336,7 +348,9 @@ export function Dashboard() {
   if (
     activeSection === 'overview' ||
     (!isAdmin &&
-      (activeSection === 'users' || activeSection === 'upstream-balances'))
+      (activeSection === 'users' ||
+        activeSection === 'upstream-balances' ||
+        activeSection === 'profit'))
   ) {
     return <OverviewDashboard />
   }
@@ -435,6 +449,13 @@ export function Dashboard() {
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <UpstreamBalances isRoot={userRole === ROLE.SUPER_ADMIN} />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'profit' && isAdmin && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyProfitAnalytics />
               </Suspense>
             </FadeIn>
           )}

@@ -24,6 +24,41 @@ import type {
   UptimeGroupResult,
 } from './types'
 
+export type ProfitAnalyticsPoint = {
+  model_name: string
+  created_at: number
+  revenue: number
+  cost: number
+  profit: number
+  token_used: number
+  count: number
+  cost_configured: boolean
+  upstream_models: Array<{
+    channel_id: number
+    upstream_model_name: string
+    count: number
+    cost: number
+    cost_configured: boolean
+  }>
+}
+
+export type ProfitAnalyticsResponse = {
+  success: boolean
+  data: ProfitAnalyticsPoint[]
+  summary: Record<string, number>
+  current_hour: Record<string, number>
+}
+
+export async function getProfitAnalytics(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<ProfitAnalyticsResponse>('/api/data/profit', {
+    params,
+  })
+  return res.data
+}
+
 // ============================================================================
 // Dashboard APIs
 // ============================================================================

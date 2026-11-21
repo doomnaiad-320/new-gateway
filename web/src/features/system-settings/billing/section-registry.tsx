@@ -25,6 +25,7 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { UpstreamModelCostsSection } from './upstream-model-costs-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
@@ -113,6 +114,13 @@ const BILLING_SECTIONS = [
         toolPricesDefault={settings['tool_price_setting.prices']}
         visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
       />
+    ),
+  },
+  {
+    id: 'upstream-model-costs',
+    titleKey: 'Upstream Model Costs',
+    build: (settings: BillingSettings) => (
+      <UpstreamModelCostsSection defaultValue={settings.ProfitUpstreamCosts} />
     ),
   },
   {

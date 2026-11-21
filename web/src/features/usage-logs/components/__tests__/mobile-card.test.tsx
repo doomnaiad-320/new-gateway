@@ -122,7 +122,7 @@ it('shows model mismatch evidence when tapping the mobile model badge', async ()
   expect(
     within(dialog).getByText('Response model: unexpected-model')
   ).toBeVisible()
-  expect(within(dialog).getByText('mapped-model')).toBeVisible()
+  expect(within(dialog).queryByText('mapped-model')).not.toBeInTheDocument()
   expect(within(dialog).getByText('unexpected-model')).toBeVisible()
 })
 

@@ -317,7 +317,7 @@ it('makes the Wan icon available to model icon selectors', () => {
   expect(getLobeIconNames()).toContain('Wan')
 })
 
-it('opens the mismatch evidence with the keyboard and shows all three models', async () => {
+it('opens mismatch details with the keyboard while hiding the upstream request model', async () => {
   const user = userEvent.setup()
   const returned =
     'unexpected-provider-model-with-a-long-dated-version-2026-09-17'
@@ -340,9 +340,9 @@ it('opens the mismatch evidence with the keyboard and shows all three models', a
   ).toHaveFocus()
   await user.keyboard('{Enter}')
   expect(await screen.findByText(returned)).toBeVisible()
-  expect(screen.getByText('mapped-model')).toBeVisible()
+  expect(screen.queryByText('mapped-model')).not.toBeInTheDocument()
   expect(screen.getByText('Request Model')).toBeVisible()
-  expect(screen.getByText('Upstream Model')).toBeVisible()
+  expect(screen.queryByText('Upstream Model')).not.toBeInTheDocument()
   expect(screen.getByText('Response Model')).toBeVisible()
   expect(
     screen.getByText(/this warning alone does not prove model substitution/)
@@ -376,7 +376,7 @@ it.each([false, true])(
   }
 )
 
-it('keeps mapped model details available when the response matches the upstream model', async () => {
+it('keeps response details available when the response matches the upstream model', async () => {
   const user = userEvent.setup()
   render(
     <ModelBadge
@@ -392,6 +392,7 @@ it('keeps mapped model details available when the response matches the upstream 
     screen.getByRole('button', { name: 'Model: requested-model' })
   )
   expect(await screen.findByText('Response Model')).toBeVisible()
+  expect(screen.queryByText('Upstream Model')).not.toBeInTheDocument()
   expect(screen.queryByText(/^Response model:/)).not.toBeInTheDocument()
 })
 

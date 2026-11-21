@@ -1,10 +1,12 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
@@ -55,6 +57,102 @@ type migrationDecimalV2 struct {
 type migrationDecimalV3 struct {
 	ID    int     `gorm:"primaryKey"`
 	Price float64 `gorm:"type:decimal(12,6);not null;default:1.25"`
+}
+
+type QuotaDataMigrationColumns struct {
+	Id                  int    `gorm:"primaryKey"`
+	UserID              int    `gorm:"index"`
+	Username            string `gorm:"size:64;default:''"`
+	ModelName           string `gorm:"size:64;default:''"`
+	CreatedAt           int64  `gorm:"bigint"`
+	UseGroup            string `gorm:"size:64;default:''"`
+	TokenID             int    `gorm:"default:0"`
+	ChannelID           int    `gorm:"default:0"`
+	NodeName            string `gorm:"size:64;default:''"`
+	TokenUsed           int    `gorm:"default:0"`
+	Count               int    `gorm:"default:0"`
+	Quota               int    `gorm:"default:0"`
+	CacheReadTokens     int64  `gorm:"default:0"`
+	CacheCreationTokens int64  `gorm:"default:0"`
+}
+
+type quotaDataMigrationV1 struct {
+	QuotaDataMigrationColumns
+}
+
+type quotaDataMigrationV2 struct {
+	QuotaDataMigrationColumns
+	UpstreamModelName string `gorm:"size:128;default:''"`
+}
+
+func TestQuotaDataUpstreamModelColumnMigrationAcrossDatabases(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var dsn string
+			switch dialect {
+			case "sqlite":
+				dsn = "local"
+				previousPath := common.SQLitePath
+				common.SQLitePath = filepath.Join(t.TempDir(), "quota-data-migration.db")
+				t.Cleanup(func() { common.SQLitePath = previousPath })
+			case "mysql":
+				dsn = strings.TrimSpace(os.Getenv("TEST_MYSQL_DSN"))
+			case "postgres":
+				dsn = strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
+			}
+			if dsn == "" {
+				t.Skip("test database DSN is not configured")
+			}
+			t.Setenv("MIGRATION_TEST_DSN", dsn)
+			db, _, err := chooseDB("MIGRATION_TEST_DSN", false)
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+
+			versionQuery := "SELECT version()"
+			if dialect == "sqlite" {
+				versionQuery = "SELECT sqlite_version()"
+			}
+			var version string
+			require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+			t.Logf("%s version: %s", dialect, version)
+
+			recorder := &migrationSQLRecorder{}
+			db = db.Session(&gorm.Session{Logger: recorder})
+			freshTable := fmt.Sprintf("qdm_fresh_%d", time.Now().UnixNano())
+			upgradeTable := fmt.Sprintf("qdm_upgrade_%d", time.Now().UnixNano())
+			t.Cleanup(func() {
+				_ = db.Migrator().DropTable(freshTable)
+				_ = db.Migrator().DropTable(upgradeTable)
+			})
+
+			fresh := db.Table(freshTable)
+			require.NoError(t, fresh.AutoMigrate(&quotaDataMigrationV2{}))
+			require.True(t, fresh.Migrator().HasColumn(&quotaDataMigrationV2{}, "UpstreamModelName"))
+			recorder.reset()
+			require.NoError(t, fresh.AutoMigrate(&quotaDataMigrationV2{}))
+			assert.Empty(t, recorder.schemaMutations(), "a second fresh startup migration must not change schema")
+
+			upgrade := db.Table(upgradeTable)
+			require.NoError(t, upgrade.AutoMigrate(&quotaDataMigrationV1{}))
+			legacy := quotaDataMigrationV1{QuotaDataMigrationColumns: QuotaDataMigrationColumns{
+				Id: 7, UserID: 13, Username: "alice", ModelName: "client-model", CreatedAt: 3600,
+				ChannelID: 4, TokenUsed: 90, Count: 2, Quota: 500,
+			}}
+			require.NoError(t, upgrade.Create(&legacy).Error)
+			recorder.reset()
+			require.NoError(t, upgrade.AutoMigrate(&quotaDataMigrationV2{}))
+			require.True(t, upgrade.Migrator().HasColumn(&quotaDataMigrationV2{}, "UpstreamModelName"))
+			var migrated quotaDataMigrationV2
+			require.NoError(t, upgrade.First(&migrated, legacy.Id).Error)
+			assert.Equal(t, legacy.QuotaDataMigrationColumns, migrated.QuotaDataMigrationColumns)
+			assert.Empty(t, migrated.UpstreamModelName)
+			recorder.reset()
+			require.NoError(t, upgrade.AutoMigrate(&quotaDataMigrationV2{}))
+			assert.Empty(t, recorder.schemaMutations(), "a second upgrade migration must not change schema")
+		})
+	}
 }
 
 func TestMigrationSchemaStability(t *testing.T) {

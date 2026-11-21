@@ -51,11 +51,21 @@ const DASHBOARD_SECTIONS = [
     adminOnly: true,
     build: () => null,
   },
+  {
+    id: 'profit',
+    titleKey: 'Profit Analytics',
+    adminOnly: true,
+    build: () => null,
+  },
 ] as const
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users', 'upstream-balances'])
+const ADMIN_ONLY_SECTIONS = new Set<string>([
+  'users',
+  'upstream-balances',
+  'profit',
+])
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,

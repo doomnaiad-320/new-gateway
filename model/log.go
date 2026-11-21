@@ -391,6 +391,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	if common.DataExportEnabled {
 		var cacheReadTokens, cacheCreationTokens int
+		upstreamModelName := resolveUpstreamModelName(other, params.ModelName)
 		if other != nil {
 			cacheReadTokens, _ = other.public["cache_tokens"].(int)
 			// The settlement path already normalizes the cache creation total.
@@ -401,6 +402,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			UserID:              userId,
 			Username:            username,
 			ModelName:           params.ModelName,
+			UpstreamModelName:   upstreamModelName,
 			Quota:               params.Quota,
 			CreatedAt:           createdAt,
 			TokenUsed:           params.PromptTokens + params.CompletionTokens,
@@ -463,18 +465,32 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		upstreamModelName := resolveUpstreamModelName(other, params.ModelName)
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    params.UserId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  nodeName,
+			UserID:            params.UserId,
+			Username:          username,
+			ModelName:         params.ModelName,
+			UpstreamModelName: upstreamModelName,
+			Quota:             params.Quota,
+			CreatedAt:         createdAt,
+			UseGroup:          params.Group,
+			TokenID:           params.TokenId,
+			ChannelID:         params.ChannelId,
+			NodeName:          nodeName,
 		})
 	}
+}
+
+func resolveUpstreamModelName(other *LogOther, requestModelName string) string {
+	if other != nil {
+		if upstreamModelName, ok := other.public["upstream_model_name"].(string); ok && upstreamModelName != "" {
+			return upstreamModelName
+		}
+		if isMapped, ok := other.public["is_model_mapped"].(bool); ok && isMapped {
+			return ""
+		}
+	}
+	return requestModelName
 }
 
 // LogFilter is the usage-log search shared by the log list and the log export.

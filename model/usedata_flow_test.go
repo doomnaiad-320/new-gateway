@@ -2,8 +2,10 @@ package model
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,4 +192,112 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	require.Equal(t, 60, rows[0].TokenUsed)
 	require.Equal(t, "default", rows[1].UseGroup)
 	require.Equal(t, 25, rows[1].Quota)
+}
+
+func TestLogQuotaDataKeepsUpstreamModelsSeparate(t *testing.T) {
+	truncateTables(t)
+	CacheQuotaDataLock.Lock()
+	previousCache := CacheQuotaData
+	CacheQuotaData = make(map[string]*QuotaData)
+	CacheQuotaDataLock.Unlock()
+	t.Cleanup(func() {
+		CacheQuotaDataLock.Lock()
+		CacheQuotaData = previousCache
+		CacheQuotaDataLock.Unlock()
+	})
+
+	for _, upstreamModel := range []string{"provider-a", "provider-b"} {
+		LogQuotaData(QuotaDataLogParams{
+			UserID:            1,
+			Username:          "alice",
+			ModelName:         "client-model",
+			UpstreamModelName: upstreamModel,
+			CreatedAt:         7200,
+			ChannelID:         4,
+			Quota:             50,
+		})
+	}
+
+	SaveQuotaDataCache()
+	var rows []QuotaData
+	require.NoError(t, DB.Where("model_name = ?", "client-model").Find(&rows).Error)
+	require.Len(t, rows, 2)
+	require.ElementsMatch(t, []string{"provider-a", "provider-b"}, []string{
+		rows[0].UpstreamModelName,
+		rows[1].UpstreamModelName,
+	})
+}
+
+func TestGetProfitAnalyticsMatchesConfiguredCostsByRequestChannelAndUpstreamModel(t *testing.T) {
+	truncateTables(t)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = map[string]string{
+		ProfitUpstreamCostOption: `[{"model_name":"client-model","channel_id":4,"upstream_model_name":"provider-a","cost_per_request":0.1}]`,
+	}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	now := time.Now().Unix()
+	createdAt := now - now%3600
+	for _, row := range []QuotaData{
+		{Username: "alice", ModelName: "client-model", UpstreamModelName: "provider-a", ChannelID: 4, CreatedAt: createdAt, Count: 2, Quota: 1000, TokenUsed: 80},
+		{Username: "alice", ModelName: "client-model", UpstreamModelName: "provider-b", ChannelID: 4, CreatedAt: createdAt, Count: 1, Quota: 500, TokenUsed: 30},
+		{Username: "alice", ModelName: "other-model", UpstreamModelName: "provider-a", ChannelID: 5, CreatedAt: createdAt, Count: 1, Quota: 700},
+	} {
+		require.NoError(t, DB.Create(&row).Error)
+	}
+
+	rows, summary, currentHour, err := GetProfitAnalytics(createdAt, now, "alice")
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "client-model", rows[0].ModelName)
+	assert.Equal(t, int64(3), rows[0].Count)
+	assert.InDelta(t, 15.0, rows[0].Revenue, 0.0001)
+	assert.False(t, rows[0].CostConfigured)
+	assert.Len(t, rows[0].UpstreamModels, 2)
+	assert.Equal(t, "provider-a", rows[0].UpstreamModels[0].UpstreamModelName)
+	assert.InDelta(t, 0.2, rows[0].UpstreamModels[0].Cost, 0.0001)
+	assert.True(t, rows[0].UpstreamModels[0].CostConfigured)
+	assert.Equal(t, "provider-b", rows[0].UpstreamModels[1].UpstreamModelName)
+	assert.False(t, rows[0].UpstreamModels[1].CostConfigured)
+	assert.Equal(t, float64(22), summary["total_revenue"])
+	assert.Equal(t, float64(0), summary["cost_configured"])
+	assert.Equal(t, float64(0), currentHour["cost_configured"])
+
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap[ProfitUpstreamCostOption] = `[{"model_name":"client-model","channel_id":4,"upstream_model_name":"provider-a","cost_per_request":0.1},{"model_name":"client-model","channel_id":4,"upstream_model_name":"provider-b","cost_per_request":0.5},{"model_name":"other-model","channel_id":5,"upstream_model_name":"provider-a","cost_per_request":0.2}]`
+	common.OptionMapRWMutex.Unlock()
+	rows, summary, currentHour, err = GetProfitAnalytics(createdAt, now, "alice")
+	require.NoError(t, err)
+	assert.True(t, rows[0].CostConfigured)
+	assert.InDelta(t, 0.7, rows[0].Cost, 0.0001)
+	assert.InDelta(t, 14.3, rows[0].Profit, 0.0001)
+	assert.InDelta(t, 0.9, summary["total_cost"], 0.0001)
+	assert.InDelta(t, 21.1, summary["total_profit"], 0.0001)
+	assert.InDelta(t, 21.1, currentHour["total_profit"], 0.0001)
+}
+
+func TestParseProfitUpstreamCostsRejectsInvalidAndDuplicateRules(t *testing.T) {
+	valid := `[{"model_name":" model-a ","channel_id":8,"upstream_model_name":" provider-a ","cost_per_request":0}]`
+	rules, err := ParseProfitUpstreamCosts(valid)
+	require.NoError(t, err)
+	require.Equal(t, "model-a", rules[0].ModelName)
+	require.Equal(t, "provider-a", rules[0].UpstreamModelName)
+
+	for _, value := range []string{
+		`{"model_name":"model-a"}`,
+		`[{"model_name":"model-a","channel_id":8,"upstream_model_name":"provider-a","cost_per_request":-0.1}]`,
+		`[{"model_name":"model-a","channel_id":8,"upstream_model_name":"provider-a","cost_per_request":0.1},{"model_name":"model-a","channel_id":8,"upstream_model_name":"provider-a","cost_per_request":0.2}]`,
+	} {
+		_, err = ParseProfitUpstreamCosts(value)
+		require.Error(t, err)
+	}
 }
