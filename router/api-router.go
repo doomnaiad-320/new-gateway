@@ -29,6 +29,21 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
+		upstreamBalanceRoute := apiRouter.Group("/upstream-balance")
+		upstreamBalanceRoute.Use(middleware.DisableCache(), middleware.AdminAuth())
+		{
+			upstreamBalanceRoute.GET("/accounts", controller.ListUpstreamBalanceAccounts)
+			upstreamBalanceRoute.POST("/refresh", controller.RefreshUpstreamBalanceAccounts)
+		}
+		upstreamBalanceRootRoute := apiRouter.Group("/upstream-balance")
+		upstreamBalanceRootRoute.Use(middleware.DisableCache(), middleware.RootAuth())
+		{
+			upstreamBalanceRootRoute.POST("/accounts", controller.CreateUpstreamBalanceAccount)
+			upstreamBalanceRootRoute.PUT("/accounts/:id", controller.UpdateUpstreamBalanceAccount)
+			upstreamBalanceRootRoute.DELETE("/accounts/:id", controller.DeleteUpstreamBalanceAccount)
+			upstreamBalanceRootRoute.POST("/accounts/test", controller.TestUpstreamBalanceAccount)
+			upstreamBalanceRootRoute.POST("/accounts/:id/test", controller.TestSavedUpstreamBalanceAccount)
+		}
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)

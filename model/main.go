@@ -349,6 +349,8 @@ func migrateDB() error {
 		&PasskeyCredential{},
 		&Option{},
 		&LoginEncryptionKey{},
+		&UpstreamBalanceEncryptionKey{},
+		&UpstreamBalanceAccount{},
 		&Redemption{},
 		&Ability{},
 		&Log{},

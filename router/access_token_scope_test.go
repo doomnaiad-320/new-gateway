@@ -181,6 +181,33 @@ func TestDashboardPerfMetricsRequiresAdminReadAccess(t *testing.T) {
 	}
 }
 
+func TestUpstreamBalanceRoutesRequireAdminSession(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/upstream-balance/accounts"},
+		{http.MethodPost, "/api/upstream-balance/refresh"},
+		{http.MethodPost, "/api/upstream-balance/accounts"},
+		{http.MethodPut, "/api/upstream-balance/accounts/1"},
+		{http.MethodDelete, "/api/upstream-balance/accounts/1"},
+		{http.MethodPost, "/api/upstream-balance/accounts/test"},
+		{http.MethodPost, "/api/upstream-balance/accounts/1/test"},
+	}
+	for _, route := range routes {
+		rulePath := strings.Replace(route.path, "/accounts/1", "/accounts/:id", 1)
+		key := route.method + " " + rulePath
+		rule, ok := middleware.AccessTokenRouteRule(key)
+		require.True(t, ok, "missing access-token rule for %s", key)
+		assert.Equal(t, "session", rule.Kind(), key)
+
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(route.method, route.path, nil))
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code, key)
+	}
+}
+
 func TestAccessTokenCatalogCoversEveryPermission(t *testing.T) {
 	catalog := service.AccessTokenCatalog(1, common.RoleRootUser)
 	scopes := map[string]bool{}

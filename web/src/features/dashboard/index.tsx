@@ -58,6 +58,12 @@ import type {
   UserChartsFilters,
 } from './types'
 
+const UpstreamBalances = lazy(() =>
+  import('./upstream-balances').then((module) => ({
+    default: module.UpstreamBalances,
+  }))
+)
+
 const route = getRouteApi('/_authenticated/dashboard/$section')
 
 const LOG_STAT_CARD_FALLBACK_KEYS = [
@@ -194,6 +200,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   users: {
     titleKey: 'User Analytics',
   },
+  'upstream-balances': {
+    titleKey: 'Upstream Balance',
+  },
 }
 
 export function Dashboard() {
@@ -253,7 +262,9 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          ((section !== 'users' && section !== 'upstream-balances') || isAdmin)
       ),
     [isAdmin]
   )
@@ -322,7 +333,11 @@ export function Dashboard() {
     ) : null
   const sectionActions = modelActions ?? flowActions
 
-  if (activeSection === 'overview') {
+  if (
+    activeSection === 'overview' ||
+    (!isAdmin &&
+      (activeSection === 'users' || activeSection === 'upstream-balances'))
+  ) {
     return <OverviewDashboard />
   }
 
@@ -413,6 +428,13 @@ export function Dashboard() {
                   filters={modelFilters}
                   sensitiveVisible={flowSensitiveVisible}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'upstream-balances' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <UpstreamBalances isRoot={userRole === ROLE.SUPER_ADMIN} />
               </Suspense>
             </FadeIn>
           )}
