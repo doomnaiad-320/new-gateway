@@ -2,8 +2,8 @@ package setting
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,12 +11,8 @@ import (
 
 const DefaultMaxTokenAutoGroups = 5
 
-var autoGroups = []string{
-	"default",
-}
-
+var autoGroups = []string{"default"}
 var DefaultUseAutoGroup = false
-
 var maxTokenAutoGroups atomic.Int64
 
 func init() {
@@ -24,24 +20,45 @@ func init() {
 }
 
 func ContainsAutoGroup(group string) bool {
-	return slices.Contains(autoGroups, group)
+	for _, autoGroup := range GetAutoGroups() {
+		if autoGroup == group {
+			return true
+		}
+	}
+	return false
 }
 
-func UpdateAutoGroupsByJsonString(jsonString string) error {
-	autoGroups = make([]string, 0)
-	return common.Unmarshal([]byte(jsonString), &autoGroups)
+func UpdateAutoGroupsByJsonString(value string) error {
+	var groups []string
+	if err := common.UnmarshalJsonStr(value, &groups); err != nil {
+		return err
+	}
+	autoGroupRoutesMu.Lock()
+	autoGroups = groups
+	config := autoGroupRoutes
+	for i := range config.Routes {
+		if config.Routes[i].Key == config.DefaultRoute {
+			config.Routes[i].Groups = append([]string(nil), groups...)
+			break
+		}
+	}
+	autoGroupRoutes = config
+	autoGroupRoutesMu.Unlock()
+	return nil
 }
 
 func AutoGroups2JsonString() string {
-	jsonBytes, err := common.Marshal(autoGroups)
+	data, err := common.Marshal(GetAutoGroups())
 	if err != nil {
 		return "[]"
 	}
-	return string(jsonBytes)
+	return string(data)
 }
 
 func GetAutoGroups() []string {
-	return autoGroups
+	autoGroupRoutesMu.RLock()
+	defer autoGroupRoutesMu.RUnlock()
+	return append([]string(nil), autoGroups...)
 }
 
 func GetMaxTokenAutoGroups() int {
@@ -63,4 +80,8 @@ func UpdateMaxTokenAutoGroups(value string) error {
 	maxCount, _ := strconv.Atoi(value)
 	maxTokenAutoGroups.Store(int64(maxCount))
 	return nil
+}
+
+func IsNamedAutoRouteKey(group string) bool {
+	return strings.HasPrefix(strings.TrimSpace(group), AutoRoutePrefix) && IsAutoRouteKey(group)
 }

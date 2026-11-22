@@ -132,6 +132,7 @@ func InitOptionMap() {
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
+	common.OptionMap["AutoGroupRoutes"] = setting.AutoGroupRoutes2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
@@ -286,6 +287,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
+	}
+	if key == "AutoGroupRoutes" {
+		return setting.ValidateAutoGroupRoutesJsonString(value)
 	}
 	return nil
 }
@@ -537,6 +541,14 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
 		err = setting.UpdateAutoGroupsByJsonString(value)
+		if err == nil {
+			common.OptionMap["AutoGroupRoutes"] = setting.AutoGroupRoutes2JsonString()
+		}
+	case "AutoGroupRoutes":
+		err = setting.UpdateAutoGroupRoutesByJsonString(value)
+		if err == nil {
+			common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
+		}
 	case "MaxTokenAutoGroups":
 		err = setting.UpdateMaxTokenAutoGroups(value)
 	case "CustomCallbackAddress":

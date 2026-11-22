@@ -70,3 +70,16 @@ func TestGetRequestAutoGroupsDoesNotFallBackAfterPermissionChange(t *testing.T) 
 
 	assert.Empty(t, groups)
 }
+
+func TestGetRequestAutoGroupsResolvesNamedRouteInConfiguredOrder(t *testing.T) {
+	configureRequestAutoGroupsTest(t)
+	originalRoutes := setting.AutoGroupRoutes2JsonString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateAutoGroupRoutesByJsonString(originalRoutes))
+	})
+	require.NoError(t, setting.UpdateAutoGroupRoutesByJsonString(`{"version":1,"default_route":"auto","routes":[{"key":"auto","groups":["default"]},{"key":"auto:fast","name":"Fast","groups":["vip","revoked","default"]}]}`))
+	ctx := newRequestAutoGroupsContext()
+	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "auto:fast")
+
+	assert.Equal(t, []string{"vip", "default"}, GetRequestAutoGroups(ctx, "default"))
+}

@@ -44,6 +44,15 @@ func GetUserGroups(c *gin.Context) {
 			"desc":  setting.GetUsableGroupDescription("auto"),
 		}
 	}
+	for _, route := range setting.GetAutoGroupRoutesConfig().Routes {
+		if _, autoAvailable := userUsableGroups["auto"]; !autoAvailable || route.Key == "auto" || !route.UserSelectable || !route.Enabled || len(service.GetUserAutoRouteGroups(userGroup, route.Key)) == 0 {
+			continue
+		}
+		usableGroups[route.Key] = map[string]any{
+			"ratio": "auto",
+			"desc":  route.Name,
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

@@ -633,6 +633,12 @@ func GetUserModels(c *gin.Context) {
 		for g := range groups {
 			groupsToQuery = append(groupsToQuery, g)
 		}
+	case setting.IsNamedAutoRouteKey(group):
+		if _, autoAvailable := groups["auto"]; autoAvailable {
+			if route, exists := setting.GetAutoRoute(group); exists && route.Enabled && route.UserSelectable {
+				groupsToQuery = service.GetUserAutoRouteGroups(user.Group, group)
+			}
+		}
 	case group == "auto":
 		if _, ok := groups[group]; ok {
 			groupsToQuery = service.GetUserAutoGroup(user.Group)

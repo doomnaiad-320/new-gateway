@@ -30,6 +30,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/MoeForge/moego/ojson"
 	"github.com/gin-gonic/gin"
@@ -694,8 +695,12 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 		}
 	} else {
 		group := common.GetContextKeyString(c, appconstant.ContextKeyUsingGroup)
-		if group == "auto" {
-			if !slices.Contains(service.GetRequestAutoGroups(c, common.GetContextKeyString(c, appconstant.ContextKeyUserGroup)), s.lockedGroup) {
+		if setting.IsAutoRouteKey(group) {
+			autoGroups := service.GetRequestAutoGroups(c, common.GetContextKeyString(c, appconstant.ContextKeyUserGroup))
+			if setting.IsNamedAutoRouteKey(group) {
+				autoGroups = service.GetUserAutoRouteGroups(common.GetContextKeyString(c, appconstant.ContextKeyUserGroup), group)
+			}
+			if !slices.Contains(autoGroups, s.lockedGroup) {
 				return types.NewErrorWithStatusCode(errors.New("the connection group is no longer allowed"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 			}
 			group = s.lockedGroup

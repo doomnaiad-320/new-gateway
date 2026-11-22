@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -124,7 +125,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	filters := GetChannelConstraints(param.Ctx).Filters
 	affinityRetryOffset := param.Ctx.GetInt(ginKeyChannelAffinityRetryOffset)
 
-	if param.TokenGroup == "auto" {
+	if setting.IsAutoRouteKey(param.TokenGroup) {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
@@ -338,9 +339,13 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, constraints.Filters)
 			}
 			if affinitySatisfied {
-				if usingGroup == "auto" {
+				if setting.IsAutoRouteKey(usingGroup) {
 					userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-					for _, g := range GetRequestAutoGroups(c, userGroup) {
+					autoGroups := GetRequestAutoGroups(c, userGroup)
+					if setting.IsNamedAutoRouteKey(usingGroup) {
+						autoGroups = GetUserAutoRouteGroups(userGroup, usingGroup)
+					}
+					for _, g := range autoGroups {
 						if model.IsChannelEnabledForGroupModel(g, modelName, preferred.Id) {
 							selectGroup = g
 							common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
@@ -371,7 +376,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		channel, selectGroup, err = CacheGetRandomSatisfiedChannel(retry)
 		if err != nil {
 			showGroup := usingGroup
-			if usingGroup == "auto" {
+			if setting.IsAutoRouteKey(usingGroup) {
 				showGroup = fmt.Sprintf("auto(%s)", selectGroup)
 			}
 			return nil, selectGroup, &ChannelSelectError{

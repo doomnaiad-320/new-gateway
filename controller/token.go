@@ -337,6 +337,15 @@ func AddToken(c *gin.Context) {
 		if !setTokenAutoGroups(c, &token, request.AutoGroups.Groups) {
 			return
 		}
+	} else if setting.IsNamedAutoRouteKey(token.Group) {
+		userGroup, err := getTokenRequestUserGroup(c)
+		route, exists := setting.GetAutoRoute(token.Group)
+		_, autoAvailable := service.GetUserUsableGroups(userGroup)["auto"]
+		if err != nil || !exists || !route.Enabled || !route.UserSelectable || !autoAvailable || len(service.GetUserAutoRouteGroups(userGroup, token.Group)) == 0 {
+			common.ApiErrorT(c, "Auto group {{group}} is unavailable or unauthorized", map[string]any{"group": token.Group})
+			return
+		}
+		_ = token.SetAutoGroups(nil)
 	} else {
 		token.CrossGroupRetry = false
 		_ = token.SetAutoGroups(nil)
@@ -461,8 +470,17 @@ func UpdateToken(c *gin.Context) {
 		}
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
-		if token.Group != "auto" {
+		if token.Group != "auto" && !setting.IsNamedAutoRouteKey(token.Group) {
 			cleanToken.CrossGroupRetry = false
+			_ = cleanToken.SetAutoGroups(nil)
+		} else if setting.IsNamedAutoRouteKey(token.Group) {
+			userGroup, groupErr := getTokenRequestUserGroup(c)
+			route, exists := setting.GetAutoRoute(token.Group)
+			_, autoAvailable := service.GetUserUsableGroups(userGroup)["auto"]
+			if groupErr != nil || !exists || !route.Enabled || !route.UserSelectable || !autoAvailable || len(service.GetUserAutoRouteGroups(userGroup, token.Group)) == 0 {
+				common.ApiErrorT(c, "Auto group {{group}} is unavailable or unauthorized", map[string]any{"group": token.Group})
+				return
+			}
 			_ = cleanToken.SetAutoGroups(nil)
 		} else if request.AutoGroups.Set {
 			if !setTokenAutoGroups(c, cleanToken, request.AutoGroups.Groups) {

@@ -47,10 +47,24 @@ func GroupInUserUsableGroups(userGroup, groupName string) bool {
 }
 
 func IsUserSelectableGroup(userGroup, groupName string) bool {
-	if groupName == "" || groupName == "auto" {
+	if groupName == "" || groupName == "auto" || setting.IsAutoRouteKey(groupName) {
 		return false
 	}
 	return GroupInUserUsableGroups(userGroup, groupName) && ratio_setting.ContainsGroupRatio(groupName)
+}
+
+func GetUserAutoRouteGroups(userGroup, routeKey string) []string {
+	route, ok := setting.GetAutoRoute(routeKey)
+	if !ok || !route.Enabled {
+		return []string{}
+	}
+	groups := make([]string, 0, len(route.Groups))
+	for _, group := range route.Groups {
+		if IsUserSelectableGroup(userGroup, group) {
+			groups = append(groups, group)
+		}
+	}
+	return groups
 }
 
 // GetUserAutoGroup 根据用户分组获取自动分组设置
@@ -96,6 +110,10 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
 func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
+	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	if setting.IsNamedAutoRouteKey(tokenGroup) {
+		return GetUserAutoRouteGroups(userGroup, tokenGroup)
+	}
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
 		return GetUserAutoGroup(userGroup)
