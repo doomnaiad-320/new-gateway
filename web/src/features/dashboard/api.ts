@@ -52,6 +52,7 @@ export type ProfitAnalyticsResponse = {
 export async function getProfitAnalytics(params: {
   start_timestamp: number
   end_timestamp: number
+  username?: string
 }) {
   const res = await api.get<ProfitAnalyticsResponse>('/api/data/profit', {
     params,

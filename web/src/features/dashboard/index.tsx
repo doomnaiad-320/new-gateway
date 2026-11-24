@@ -127,16 +127,30 @@ const LazyFlowCharts = lazy(() =>
   }))
 )
 
-function LogStatCardsFallback() {
+function LogStatCardsFallback(props: { isAdmin: boolean }) {
+  const keys = props.isAdmin
+    ? [
+        ...LOG_STAT_CARD_FALLBACK_KEYS.slice(0, 2),
+        'profit',
+        ...LOG_STAT_CARD_FALLBACK_KEYS.slice(2),
+      ]
+    : LOG_STAT_CARD_FALLBACK_KEYS
+
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-7'>
-        {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
+    <div className='sm:overflow-hidden sm:rounded-lg sm:border'>
+      <div
+        className={cn(
+          'grid min-w-0 grid-cols-2 gap-2 p-2 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border/60 sm:p-0',
+          props.isAdmin ? 'lg:grid-cols-8' : 'lg:grid-cols-7'
+        )}
+      >
+        {keys.map((key, index) => (
           <div
             key={key}
             className={cn(
-              'min-w-0 px-2.5 py-1.5 sm:px-3 sm:py-4 xl:px-4',
-              index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
+              'min-w-0 rounded-md border bg-muted/20 px-2.5 py-2 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-3 sm:py-4 xl:px-4',
+              index === keys.length - 1 &&
+                keys.length % 2 !== 0 &&
                 'col-span-2 sm:col-span-1'
             )}
           >
@@ -144,13 +158,12 @@ function LogStatCardsFallback() {
               <Skeleton className='size-4 rounded-sm sm:size-7 sm:rounded-md' />
               <Skeleton className='h-4 w-16' />
             </div>
-            <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
-            <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
+            <div className='min-w-0 pl-[22px] sm:pl-0'>
+              <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
+              <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
+            </div>
           </div>
         ))}
-      </div>
-      <div className='border-t px-3 py-2'>
-        <Skeleton className='h-4 w-full max-w-md' />
       </div>
     </div>
   )
@@ -383,7 +396,7 @@ export function Dashboard() {
           {activeSection === 'models' && (
             <>
               <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
+                <Suspense fallback={<LogStatCardsFallback isAdmin={isAdmin} />}>
                   <LazyLogStatCards
                     filters={modelFilters}
                     onDataUpdate={handleDataUpdate}

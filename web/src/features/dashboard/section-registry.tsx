@@ -34,11 +34,12 @@ const DASHBOARD_SECTIONS = [
     titleKey: 'Model Call Analytics',
     build: () => null,
   },
-  {
-    id: 'flow',
-    titleKey: 'Flow',
-    build: () => null,
-  },
+  // Temporarily disabled: the flow analysis entry is hidden from the dashboard.
+  // {
+  //   id: 'flow',
+  //   titleKey: 'Flow',
+  //   build: () => null,
+  // },
   {
     id: 'users',
     titleKey: 'User Analytics',
@@ -59,7 +60,9 @@ const DASHBOARD_SECTIONS = [
   },
 ] as const
 
-export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
+export type DashboardSectionId =
+  | (typeof DASHBOARD_SECTIONS)[number]['id']
+  | 'flow'
 
 const ADMIN_ONLY_SECTIONS = new Set<string>([
   'users',

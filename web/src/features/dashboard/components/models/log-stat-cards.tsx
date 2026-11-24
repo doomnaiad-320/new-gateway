@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { TrendingUp, type LucideIcon } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
+import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getUserQuotaDates } from '@/features/dashboard/api'
+import { getProfitAnalytics, getUserQuotaDates } from '@/features/dashboard/api'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import {
   buildQueryParams,
@@ -33,7 +35,9 @@ import type {
   DashboardFilters,
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -44,6 +48,18 @@ interface LogStatCardsProps {
 }
 
 const MAX_INLINE_STAT_CHARS = 7
+
+interface LogStatCardItem {
+  key: string
+  title: string
+  value: string
+  fullValue: string
+  desc: string
+  icon: LucideIcon
+  iconTone: IconBadgeTone
+  loading?: boolean
+  error?: boolean
+}
 
 function formatStatNumber(value: number, locale: Intl.LocalesArgument) {
   const fullValue = formatNumber(value, locale)
@@ -59,10 +75,10 @@ function formatStatNumber(value: number, locale: Intl.LocalesArgument) {
 }
 
 export function LogStatCards(props: LogStatCardsProps) {
-  const { i18n } = useTranslation()
-  const statCardsConfig = useModelStatCardsConfig()
+  const { t, i18n } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const isAdmin = !!(user?.role && user.role >= 10)
+  const statCardsConfig = useModelStatCardsConfig()
   const [stats, setStats] = useState<ReturnType<
     typeof calculateDashboardStats
   > | null>(null)
@@ -72,6 +88,42 @@ export function LogStatCards(props: LogStatCardsProps) {
   const [timeRangeMinutes, setTimeRangeMinutes] = useState(0)
 
   const { filters, onDataUpdate } = props
+  const timeRange = useMemo(
+    () =>
+      computeTimeRange(
+        getDefaultDays(filters?.time_granularity),
+        filters?.start_timestamp,
+        filters?.end_timestamp
+      ),
+    [
+      filters?.end_timestamp,
+      filters?.start_timestamp,
+      filters?.time_granularity,
+    ]
+  )
+  const queryParams = useMemo(
+    () => buildQueryParams(timeRange, filters),
+    [filters, timeRange]
+  )
+  const profitQuery = useQuery({
+    queryKey: [
+      'dashboard-model-profit',
+      timeRange.start_timestamp,
+      timeRange.end_timestamp,
+      filters?.username,
+    ],
+    queryFn: async () =>
+      requireServerSuccess(
+        await getProfitAnalytics({
+          start_timestamp: timeRange.start_timestamp,
+          end_timestamp: timeRange.end_timestamp,
+          username: filters?.username,
+        })
+      ),
+    enabled: isAdmin,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
 
   useEffect(() => {
     const abortController = new AbortController()
@@ -81,15 +133,10 @@ export function LogStatCards(props: LogStatCardsProps) {
     setError(false)
     onDataUpdate?.([], true)
 
-    const timeRange = computeTimeRange(
-      getDefaultDays(filters?.time_granularity),
-      filters?.start_timestamp,
-      filters?.end_timestamp
-    )
     const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
     setTimeRangeMinutes(timeDiff)
 
-    void getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin)
+    void getUserQuotaDates(queryParams, isAdmin)
       .then((res) => {
         if (abortController.signal.aborted) return
         const data = res?.data || []
@@ -111,7 +158,7 @@ export function LogStatCards(props: LogStatCardsProps) {
     return () => {
       abortController.abort()
     }
-  }, [filters, isAdmin, onDataUpdate])
+  }, [isAdmin, onDataUpdate, queryParams, timeRange])
 
   const adaptedStats = {
     rpm: stats?.totalCount ?? 0,
@@ -121,7 +168,7 @@ export function LogStatCards(props: LogStatCardsProps) {
     cacheCreation: stats?.totalCacheCreationTokens ?? 0,
   }
 
-  const items = statCardsConfig.map((config) => {
+  const items: LogStatCardItem[] = statCardsConfig.map((config) => {
     const rawValue = config.getValue(adaptedStats, timeRangeMinutes)
     const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
     const formatted =
@@ -142,21 +189,51 @@ export function LogStatCards(props: LogStatCardsProps) {
       iconTone: config.iconTone,
     }
   })
+  if (isAdmin) {
+    const profitSummary = profitQuery.data?.summary
+    const costConfigured = Number(profitSummary?.cost_configured ?? 1) !== 0
+    const totalProfit = Number(profitSummary?.total_profit ?? 0) || 0
+    const formattedProfit = formatBillingCurrencyFromUSD(totalProfit, {
+      digitsLarge: 4,
+      digitsSmall: 4,
+      abbreviate: false,
+    })
+    const profitValue = costConfigured
+      ? formattedProfit
+      : t('Cost not configured')
+
+    items.splice(2, 0, {
+      key: 'profit',
+      title: t('Total Profit'),
+      value: profitValue,
+      fullValue: profitValue,
+      desc: t('Net profit'),
+      icon: TrendingUp,
+      iconTone: 'warning',
+      loading: profitQuery.isLoading,
+      error: profitQuery.isError,
+    })
+  }
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-7'>
+    <div className='sm:overflow-hidden sm:rounded-lg sm:border'>
+      <div
+        className={cn(
+          'grid min-w-0 grid-cols-2 gap-2 p-2 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-border/60 sm:p-0',
+          isAdmin ? 'lg:grid-cols-8' : 'lg:grid-cols-7'
+        )}
+      >
         {items.map((it, idx) => {
           const Icon = it.icon
           let valueContent
-          if (loading) {
+          if (loading || it.loading) {
             valueContent = (
               <div className='mt-1 flex flex-col gap-1 sm:mt-2 sm:gap-1.5'>
                 <Skeleton className='h-5 w-16 sm:h-7 sm:w-20' />
                 <Skeleton className='hidden h-3.5 w-28 md:block' />
               </div>
             )
-          } else if (error) {
+          } else if (error || it.error) {
             valueContent = (
               <>
                 <div className='text-muted-foreground mt-1 font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'>
@@ -188,9 +265,9 @@ export function LogStatCards(props: LogStatCardsProps) {
               key={it.key}
               role='group'
               aria-label={it.title}
-              aria-busy={loading}
+              aria-busy={loading || Boolean(it.loading)}
               className={cn(
-                'min-w-0 px-2.5 py-1.5 sm:px-3 sm:py-4 xl:px-4',
+                'min-w-0 rounded-md border bg-muted/20 px-2.5 py-2 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-3 sm:py-4 xl:px-4',
                 idx === items.length - 1 &&
                   items.length % 2 !== 0 &&
                   'col-span-2 sm:col-span-1'
@@ -212,7 +289,7 @@ export function LogStatCards(props: LogStatCardsProps) {
                 </div>
               </div>
 
-              {valueContent}
+              <div className='min-w-0 pl-[22px] sm:pl-0'>{valueContent}</div>
             </div>
           )
         })}
